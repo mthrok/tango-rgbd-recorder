@@ -11,14 +11,14 @@ import com.google.tango.support.TangoPointCloudManager;
  */
 
 
-public class TangoDataProcessor {
-    private static final String TAG = TangoDataProcessor.class.getSimpleName();
+public class TangoDataManager {
+    private static final String TAG = TangoDataManager.class.getSimpleName();
 
     private TangoPointCloudManager mPointCloudManager;
     private TangoImageBufferManager mColorImageBuffer;
     private TangoPoseDataManager mPoseDataManager;
 
-    public TangoDataProcessor() {
+    public TangoDataManager() {
         mColorImageBuffer = new TangoImageBufferManager();
         mPointCloudManager = new TangoPointCloudManager();
         mPoseDataManager = new TangoPoseDataManager();

@@ -1,13 +1,16 @@
 package com.demo.tutorial.tango.tangorgbd;
 
 import android.content.Context;
+import android.graphics.Point;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.view.Display;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.Toast;
+import android.widget.Button;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -34,32 +37,32 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = MainActivity.class.getSimpleName();
 
     private TangoWrapper mTangoWrapper;
-    private TangoDataProcessor mTangoDataProcessor;
+    private TangoDataManager mTangoDataManager;
 
-    private Runnable mMainProcessRunnable;
+    private DataProcessor mDataProcessor;
     private Thread mMainThread;
-    private boolean mRunning;
 
     private ImageView mImageView;
+    private Button mRecordButton;
 
     private class TangoWrapper {
         private final String TAG = TangoWrapper.class.getSimpleName();
 
         private final Tango mTango;
-        private final TangoDataProcessor mTangoDataProcessor;
+        private final TangoDataManager mTangoDataManager;
         private Boolean mIsStarted;
 
         class TangoUpdateCallback extends Tango.TangoUpdateCallback {
             @Override
             public void onPoseAvailable(TangoPoseData pose) {
                 // Log.d(TAG, "POSE" + pose.toString());
-                mTangoDataProcessor.updatePoseData(pose);
+                mTangoDataManager.updatePoseData(pose);
             }
 
             @Override
             public void onPointCloudAvailable(TangoPointCloudData pointCloud) {
                 // Log.d(TAG, "POINT CLOUD AVAILABLE.");
-                mTangoDataProcessor.updatePointCloud(pointCloud);
+                mTangoDataManager.updatePointCloud(pointCloud);
             }
 
             @Override
@@ -81,7 +84,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onFrameAvailable(TangoImageBuffer buffer, int cameraId) {
                 // Log.d(TAG, "COLOR CAMERA FRAME AVAILABLE.");
-                mTangoDataProcessor.updateColorCameraFrame(buffer);
+                mTangoDataManager.updateColorCameraFrame(buffer);
             }
         }
 
@@ -151,9 +154,9 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        private TangoWrapper(Context context, TangoDataProcessor tangoDataProcessor) {
+        private TangoWrapper(Context context, TangoDataManager tangoDataProcessor) {
             mTango = new Tango(context, new OnTangoInitializedCallback(context));
-            mTangoDataProcessor = tangoDataProcessor;
+            mTangoDataManager = tangoDataProcessor;
         }
 
         private void stop() {
@@ -163,72 +166,127 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    class DataProcessorMainProcess implements Runnable {
-        private TangoDataProcessor mProcessor;
+    class DataProcessor {
+        private TangoDataManager mProcessor;
 
         private TangoPoseData mColorCameraTPointCloud;
         private ByteBuffer mDepthImageTmpBuffer;
         private ByteBuffer mColorImageTmpBuffer;
 
-        public DataProcessorMainProcess(TangoDataProcessor processor) {
-            mProcessor = processor;
-        }
+        private Thread mMainThread;
+        private Boolean mRunning = false;
+        private Boolean mIsRecording = false;
 
-        @Override
-        public void run() {
-            TangoPointCloudData pointCloud = mProcessor.getLatestPointCloud();
-
-            if (pointCloud == null) {
-                return;
-            }
-
-            TangoPoseData poseData = mProcessor.getPoseData(pointCloud.timestamp);
-            // Log.d(TAG, poseData.toString());
-            
-            TangoImageBuffer colorImageBuffer = mProcessor.getColorImage(pointCloud.timestamp);
-
-            if (colorImageBuffer == null) {
-                return;
-            }
-
-            int width = colorImageBuffer.width;
-            int height = colorImageBuffer.height;
-
-            if (pointCloud.numPoints > 0 && width > 0 && height > 0) {
+        class MainProcess implements Runnable {
+            private TangoDepthInterpolation.DepthBuffer generateDepthImage(TangoPointCloudData pointCloud, int width, int height) {
                 if (mColorCameraTPointCloud == null || mColorCameraTPointCloud.statusCode != TangoPoseData.POSE_VALID) {
                     mColorCameraTPointCloud = TangoSupport.calculateRelativePose(
                             pointCloud.timestamp, TangoPoseData.COORDINATE_FRAME_CAMERA_COLOR,
                             pointCloud.timestamp, TangoPoseData.COORDINATE_FRAME_CAMERA_DEPTH
                     );
                 }
-                TangoDepthInterpolation.DepthBuffer depthImageBuffer = TangoDepthInterpolation.upsampleImageNearestNeighbor(
+                return TangoDepthInterpolation.upsampleImageNearestNeighbor(
                         pointCloud, width, height, mColorCameraTPointCloud);
 
+            }
+
+            private void fillDepthImageBuffer(TangoDepthInterpolation.DepthBuffer depthBuffer, int width, int height) {
+                int capacity = 4 * width * height;
+                if (mDepthImageTmpBuffer == null || mDepthImageTmpBuffer.capacity() < capacity) {
+                    Log.d(TAG, "Allocating " + capacity + " bytes");
+                    mDepthImageTmpBuffer = ByteBuffer.allocateDirect(capacity);
+                }
+                Utility.convertDepthBufferToByteBuffer(depthBuffer, mDepthImageTmpBuffer);
+            }
+
+            private void fillColorImageBuffer(TangoImageBuffer imageBuffer, int width, int height) {
                 int capacity = 4 * width * height;
                 if (mColorImageTmpBuffer == null || mColorImageTmpBuffer.capacity() < capacity) {
                     Log.d(TAG, "Allocating " + capacity + " bytes");
                     mColorImageTmpBuffer = ByteBuffer.allocateDirect(capacity);
                 }
-                if (mDepthImageTmpBuffer == null || mDepthImageTmpBuffer.capacity() < capacity) {
-                    Log.d(TAG, "Allocating " + capacity + " bytes");
-                    mDepthImageTmpBuffer = ByteBuffer.allocateDirect(capacity);
-                }
-
-                Utility.convertDepthBufferToByteBuffer(depthImageBuffer, mDepthImageTmpBuffer);
-                Utility.convertTangoImageBufferToByteBuffer(colorImageBuffer, mColorImageTmpBuffer);
-
-                final Bitmap depthBitmap = Utility.createBitmapFromByteBuffer(mDepthImageTmpBuffer, width, height);
-                final Bitmap colorBitmap = Utility.createBitmapFromByteBuffer(mColorImageTmpBuffer, width, height);
-
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run () {
-                        updatePreview(colorBitmap, depthBitmap);
-                    }
-                });
+                Utility.convertTangoImageBufferToByteBuffer(imageBuffer, mColorImageTmpBuffer);
             }
 
+            private void runOnce() {
+                TangoPointCloudData pointCloud = mProcessor.getLatestPointCloud();
+
+                if (pointCloud == null) {
+                    return;
+                }
+
+                TangoPoseData poseData = mProcessor.getPoseData(pointCloud.timestamp);
+                Log.d(TAG, poseData.toString());
+
+                TangoImageBuffer colorImageBuffer = mProcessor.getColorImage(pointCloud.timestamp);
+
+                if (colorImageBuffer == null) {
+                    return;
+                }
+
+                if (pointCloud.numPoints > 0 && colorImageBuffer.width > 0 && colorImageBuffer.height > 0) {
+                    TangoDepthInterpolation.DepthBuffer depthImageBuffer = generateDepthImage(
+                            pointCloud, colorImageBuffer.width, colorImageBuffer.height);
+
+                    fillDepthImageBuffer(
+                            depthImageBuffer, colorImageBuffer.width, colorImageBuffer.height);
+                    fillColorImageBuffer(
+                            colorImageBuffer, colorImageBuffer.width, colorImageBuffer.height);
+
+
+                    if (mIsRecording) {
+                        Log.d(TAG, "Recording...");
+                    }
+
+                    final Bitmap depthBitmap = Utility.createBitmapFromByteBuffer(
+                            mDepthImageTmpBuffer, colorImageBuffer.width, colorImageBuffer.height);
+                    final Bitmap colorBitmap = Utility.createBitmapFromByteBuffer(
+                            mColorImageTmpBuffer, colorImageBuffer.width, colorImageBuffer.height);
+
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            updatePreview(colorBitmap, depthBitmap);
+                        }
+                    });
+                }
+            }
+
+            @Override
+            public void run() {
+                while(mRunning) {
+                    runOnce();
+                }
+            }
         }
+
+        public DataProcessor(TangoDataManager processor) {
+            mProcessor = processor;
+            mRunning = false;
+            mIsRecording = false;
+        }
+
+        public void start() {
+            mRunning = true;
+            mMainThread = new Thread(new MainProcess());
+            mMainThread.start();
+        }
+
+        public void stop() {
+            Log.d(TAG, "Stopping main process.");
+            mRunning = false;
+            try {
+                mMainThread.join();
+                Log.d(TAG, "Stopped main process.");
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        public void toggleRecordingState() {
+            mIsRecording = !mIsRecording;
+        }
+
     }
 
     @Override
@@ -236,40 +294,23 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         mImageView = (ImageView) findViewById(R.id.preview_image);
+        mRecordButton = (Button) findViewById(R.id.record_button);
     }
 
     @Override
     protected void onStart() {
         super.onStart();
 
-        mTangoDataProcessor = new TangoDataProcessor();
-        mTangoWrapper = new TangoWrapper(MainActivity.this, mTangoDataProcessor);
-        mMainProcessRunnable = new DataProcessorMainProcess(mTangoDataProcessor);
-        startMainProcess();
-    }
+        mTangoDataManager = new TangoDataManager();
+        mTangoWrapper = new TangoWrapper(MainActivity.this, mTangoDataManager);
+        mDataProcessor = new DataProcessor(mTangoDataManager);
+        mDataProcessor.start();
 
-    private void startMainProcess() {
-        mMainThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                mRunning = true;
-                while(mRunning) {
-                    mMainProcessRunnable.run();
-                }
+        mRecordButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                mDataProcessor.toggleRecordingState();
             }
         });
-        mMainThread.start();
-    }
-
-    private void stopMainProcess() {
-        Log.d(TAG, "Stopping main process.");
-        mRunning = false;
-        try {
-            mMainThread.join();
-            Log.d(TAG, "Stopped main process.");
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
     }
 
     private void updatePreview(Bitmap colorBitmap, Bitmap depthBitmap) {
@@ -300,7 +341,7 @@ public class MainActivity extends AppCompatActivity {
         super.onStop();
         synchronized (MainActivity.this) {
             try {
-                stopMainProcess();
+                mDataProcessor.stop();
                 mTangoWrapper.stop();
             } catch (TangoErrorException e) {
                 Log.e(TAG, getString(R.string.exception_tango_error), e);

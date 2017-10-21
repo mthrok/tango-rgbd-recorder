@@ -20,5 +20,11 @@
         android:layout_height="match_parent"
         android:id="@+id/preview_image"/>
 
+    <Button
+        android:id="@+id/record_button"
+        android:layout_height="wrap_content"
+        android:layout_width="wrap_content"
+        android:text="@string/record_button_record"
+        />
 
 </android.support.constraint.ConstraintLayout>

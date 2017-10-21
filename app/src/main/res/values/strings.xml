@@ -4,4 +4,6 @@
     <string name="exception_tango_invalid">"Tango invalid exception! Try again!"</string>
     <string name="exception_out_of_date">"Tango Service outdated!"</string>
     <string name="motiontrackingpermission">"Motion Tracking permission needed!"</string>
+    <string name="record_button_record">"Record"</string>
+    <string name="record_button_stop">"Stop"</string>
 </resources>
