@@ -290,7 +290,9 @@ public class MainActivity extends AppCompatActivity {
             mIsRecording = !mIsRecording;
 
             if (mIsRecording) {
-                mRecorder = new TangoDataRecorder();
+                mRecorder = new TangoDataRecorder(MainActivity.this);
+            } else {
+                mRecorder.closeFileStreams();
             }
         }
 
