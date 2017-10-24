@@ -163,7 +163,6 @@ public class MainActivity extends AppCompatActivity {
             mTango.disconnect();
             mIsStarted = false;
         }
-
     }
 
     class DataProcessor {
@@ -177,6 +176,8 @@ public class MainActivity extends AppCompatActivity {
         private Boolean mRunning = false;
         private Boolean mIsRecording = false;
 
+        private TangoDataRecorder mRecorder;
+
         class MainProcess implements Runnable {
             private TangoDepthInterpolation.DepthBuffer generateDepthImage(TangoPointCloudData pointCloud, int width, int height) {
                 if (mColorCameraTPointCloud == null || mColorCameraTPointCloud.statusCode != TangoPoseData.POSE_VALID) {
@@ -187,7 +188,6 @@ public class MainActivity extends AppCompatActivity {
                 }
                 return TangoDepthInterpolation.upsampleImageNearestNeighbor(
                         pointCloud, width, height, mColorCameraTPointCloud);
-
             }
 
             private void fillDepthImageBuffer(TangoDepthInterpolation.DepthBuffer depthBuffer, int width, int height) {
@@ -236,6 +236,9 @@ public class MainActivity extends AppCompatActivity {
 
                     if (mIsRecording) {
                         Log.d(TAG, "Recording...");
+                        mRecorder.saveDepthImage();
+                        mRecorder.saveColorImage();
+                        mRecorder.savePoseData();
                     }
 
                     final Bitmap depthBitmap = Utility.createBitmapFromByteBuffer(
@@ -285,6 +288,10 @@ public class MainActivity extends AppCompatActivity {
 
         public void toggleRecordingState() {
             mIsRecording = !mIsRecording;
+
+            if (mIsRecording) {
+                mRecorder = new TangoDataRecorder();
+            }
         }
 
     }
