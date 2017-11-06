@@ -3,6 +3,7 @@
     package="com.demo.tutorial.tango.tangorgbd">
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />"
 
     <uses-library
         android:name="com.projecttango.libtango_device2"

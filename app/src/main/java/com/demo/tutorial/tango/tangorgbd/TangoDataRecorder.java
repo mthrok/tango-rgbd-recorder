@@ -3,6 +3,10 @@ package com.demo.tutorial.tango.tangorgbd;
 import android.util.Log;
 import android.content.Context;
 
+import com.google.tango.depthinterpolation.TangoDepthInterpolation;
+
+import android.os.Environment;
+
 import java.util.Date;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -17,7 +21,8 @@ public class TangoDataRecorder {
     private static final String TAG = TangoDataRecorder.class.getSimpleName();
 
     Context mContext;
-    String mPrefix;
+    static final String appname="TangoRGBD";
+    String mTimestamp;
 
     FileOutputStream mDepthStream;
     FileOutputStream mColorStream;
@@ -26,17 +31,32 @@ public class TangoDataRecorder {
     public TangoDataRecorder(Context context) {
         mContext = context;
 
-        DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssZ");
-        mPrefix = df.format(new Date(System.currentTimeMillis()));
-        Log.d(TAG, "Initializing " + mPrefix);
-
-        initFileStreams();
+        if (isExternalStorageWritable()) {
+            initFileStreams();
+        }
     }
 
-    private void initFileStreams() {
-        File baseDir = new File(mContext.getFilesDir(), mPrefix);
+    private boolean isExternalStorageWritable() {
+        return Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState());
+    }
+
+    public void initFileStreams() {
+        if (!isExternalStorageWritable()) {
+            return;
+        }
+
+        DateFormat df = new SimpleDateFormat("yyyyMMddHHmmss");
+        mTimestamp = df.format(new Date(System.currentTimeMillis()));
+
+        String prefix = appname + "/" + mTimestamp;
+
+        Log.d(TAG, "Initializing: " + prefix);
+        File baseDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), prefix);
+        Log.d(TAG, "Initializing directory: " + baseDir.getPath());
+
         baseDir.mkdirs();
 
+        /*
         File poseFile = new File(baseDir, "pose.bin");
         File colorFile = new File(baseDir, "color.bin");
         File depthFile = new File(baseDir, "depth.bin");
@@ -47,9 +67,11 @@ public class TangoDataRecorder {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        */
     }
 
     public void closeFileStreams() {
+        /*
         try {
             mPoseStream.close();
             mColorStream.close();
@@ -57,10 +79,12 @@ public class TangoDataRecorder {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        */
     }
 
     public void saveDepthImage() {
         Log.d(TAG, "Saving Depth image");
+
     }
 
     public void saveColorImage() {

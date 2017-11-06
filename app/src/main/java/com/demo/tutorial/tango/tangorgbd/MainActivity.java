@@ -1,7 +1,6 @@
 package com.demo.tutorial.tango.tangorgbd;
 
 import android.content.Context;
-import android.graphics.Point;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -37,10 +36,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = MainActivity.class.getSimpleName();
 
     private TangoWrapper mTangoWrapper;
-    private TangoDataManager mTangoDataManager;
-
     private DataProcessor mDataProcessor;
-    private Thread mMainThread;
 
     private ImageView mImageView;
     private Button mRecordButton;
@@ -50,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
 
         private final Tango mTango;
         private final TangoDataManager mTangoDataManager;
+
         private Boolean mIsStarted;
 
         class TangoUpdateCallback extends Tango.TangoUpdateCallback {
@@ -166,7 +163,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     class DataProcessor {
-        private TangoDataManager mProcessor;
+        private TangoDataManager mManager;
+        private TangoDataRecorder mRecorder;
 
         private TangoPoseData mColorCameraTPointCloud;
         private ByteBuffer mDepthImageTmpBuffer;
@@ -175,8 +173,6 @@ public class MainActivity extends AppCompatActivity {
         private Thread mMainThread;
         private Boolean mRunning = false;
         private Boolean mIsRecording = false;
-
-        private TangoDataRecorder mRecorder;
 
         class MainProcess implements Runnable {
             private TangoDepthInterpolation.DepthBuffer generateDepthImage(TangoPointCloudData pointCloud, int width, int height) {
@@ -209,16 +205,16 @@ public class MainActivity extends AppCompatActivity {
             }
 
             private void runOnce() {
-                TangoPointCloudData pointCloud = mProcessor.getLatestPointCloud();
+                TangoPointCloudData pointCloud = mManager.getLatestPointCloud();
 
                 if (pointCloud == null) {
                     return;
                 }
 
-                TangoPoseData poseData = mProcessor.getPoseData(pointCloud.timestamp);
+                TangoPoseData poseData = mManager.getPoseData(pointCloud.timestamp);
                 Log.d(TAG, poseData.toString());
 
-                TangoImageBuffer colorImageBuffer = mProcessor.getColorImage(pointCloud.timestamp);
+                TangoImageBuffer colorImageBuffer = mManager.getColorImage(pointCloud.timestamp);
 
                 if (colorImageBuffer == null) {
                     return;
@@ -263,10 +259,11 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        public DataProcessor(TangoDataManager processor) {
-            mProcessor = processor;
+        public DataProcessor(TangoDataManager processor, TangoDataRecorder recorder) {
+            mManager = processor;
             mRunning = false;
             mIsRecording = false;
+            mRecorder = recorder;
         }
 
         public void start() {
@@ -290,7 +287,7 @@ public class MainActivity extends AppCompatActivity {
             mIsRecording = !mIsRecording;
 
             if (mIsRecording) {
-                mRecorder = new TangoDataRecorder(MainActivity.this);
+                mRecorder.initFileStreams();
             } else {
                 mRecorder.closeFileStreams();
             }
@@ -310,9 +307,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
 
-        mTangoDataManager = new TangoDataManager();
-        mTangoWrapper = new TangoWrapper(MainActivity.this, mTangoDataManager);
-        mDataProcessor = new DataProcessor(mTangoDataManager);
+        TangoDataManager manager = new TangoDataManager();
+        mTangoWrapper = new TangoWrapper(MainActivity.this, manager);
+        mDataProcessor = new DataProcessor(manager, new TangoDataRecorder(this));
         mDataProcessor.start();
 
         mRecordButton.setOnClickListener(new View.OnClickListener() {
