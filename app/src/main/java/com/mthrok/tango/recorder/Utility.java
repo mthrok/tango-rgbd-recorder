@@ -1,4 +1,4 @@
-package com.demo.tutorial.tango.tangorgbd;
+package com.mthrok.tango.recorder;
 
 import android.util.Log;
 import android.graphics.Bitmap;

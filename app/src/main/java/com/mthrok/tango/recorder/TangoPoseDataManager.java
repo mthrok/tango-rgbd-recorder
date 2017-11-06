@@ -1,4 +1,4 @@
-package com.demo.tutorial.tango.tangorgbd;
+package com.mthrok.tango.recorder;
 
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.TangoInvalidException;

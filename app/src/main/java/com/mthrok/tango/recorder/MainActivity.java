@@ -1,4 +1,4 @@
-package com.demo.tutorial.tango.tangorgbd;
+package com.mthrok.tango.recorder;
 
 import android.content.Context;
 import android.support.v7.app.AppCompatActivity;
