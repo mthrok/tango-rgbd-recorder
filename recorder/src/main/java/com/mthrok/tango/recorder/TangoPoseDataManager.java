@@ -12,13 +12,13 @@ public class TangoPoseDataManager {
     private static final String TAG = TangoImageBufferManager.class.getSimpleName();
 
     private final static int DEFAULT_BUFFER_SIZE = 7;
-    private TangoPoseData[] mPoseDataArray;
+
+    private int mBufferSize;
+    private TangoPoseData[] mPoseDataBuffer;
 
     public TangoPoseDataManager(int bufferSize) {
-        mPoseDataArray = new TangoPoseData[bufferSize];
-        for (int i = 0; i < bufferSize; ++i) {
-            mPoseDataArray[i] = new TangoPoseData();
-        }
+        mBufferSize = bufferSize;
+        allocateBuffer();
     }
 
     public TangoPoseDataManager() {
@@ -29,13 +29,20 @@ public class TangoPoseDataManager {
         return getPoseData(Double.MAX_VALUE);
     }
 
+    private void allocateBuffer() {
+        mPoseDataBuffer = new TangoPoseData[mBufferSize];
+        for (int i = 0; i < mBufferSize; ++i) {
+            mPoseDataBuffer[i] = new TangoPoseData();
+        }
+    }
+
     // Factor out base class
     private int getIndexClosest(double timestamp, int defaultValue) {
         int index = defaultValue;
         double min_diff = Double.POSITIVE_INFINITY;
-        for (int i = 0; i < mPoseDataArray.length; ++i) {
-            if (mPoseDataArray[i] != null) {
-                double diff = Math.abs(timestamp - mPoseDataArray[i].timestamp);
+        for (int i = 0; i < mPoseDataBuffer.length; ++i) {
+            if (mPoseDataBuffer[i] != null) {
+                double diff = Math.abs(timestamp - mPoseDataBuffer[i].timestamp);
                 if (diff < min_diff) {
                     min_diff = diff;
                     index = i;
@@ -56,8 +63,8 @@ public class TangoPoseDataManager {
             if (index == -1) {
                 return null;
             } else {
-                TangoPoseData ret = mPoseDataArray[index];
-                mPoseDataArray[index] = new TangoPoseData();
+                TangoPoseData ret = mPoseDataBuffer[index];
+                mPoseDataBuffer[index] = new TangoPoseData();
                 return ret;
             }
         }
@@ -69,7 +76,7 @@ public class TangoPoseDataManager {
         } else {
             synchronized(this) {
                 int index = getIndexClosest(0, 0);
-                TangoPoseData targetPoseData = mPoseDataArray[index];
+                TangoPoseData targetPoseData = mPoseDataBuffer[index];
                 copyPoseData(sourcePoseData, targetPoseData);
             }
         }

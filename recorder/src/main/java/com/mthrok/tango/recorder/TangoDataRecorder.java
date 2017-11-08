@@ -20,7 +20,6 @@ import java.io.FileOutputStream;
 public class TangoDataRecorder {
     private static final String TAG = TangoDataRecorder.class.getSimpleName();
 
-    Context mContext;
     static final String appname="TangoRGBD";
     String mTimestamp;
 
@@ -28,9 +27,7 @@ public class TangoDataRecorder {
     FileOutputStream mColorStream;
     FileOutputStream mPoseStream;
 
-    public TangoDataRecorder(Context context) {
-        mContext = context;
-
+    public TangoDataRecorder() {
         if (isExternalStorageWritable()) {
             initFileStreams();
         }

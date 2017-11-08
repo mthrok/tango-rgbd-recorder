@@ -26,20 +26,21 @@ import com.google.atap.tangoservice.TangoOutOfDateException;
 import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.experimental.TangoImageBuffer;
-import com.google.tango.depthinterpolation.TangoDepthInterpolation;
 import com.google.tango.support.TangoSupport;
 
 import java.util.ArrayList;
-import java.nio.ByteBuffer;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = MainActivity.class.getSimpleName();
 
     private TangoWrapper mTangoWrapper;
-    private DataProcessor mDataProcessor;
+    private TangoDataProcessor mDataProcessor;
 
     private ImageView mImageView;
     private Button mRecordButton;
+
+    private Thread mMainThread;
+    private Boolean mIsRunning;
 
     private class TangoWrapper {
         private final String TAG = TangoWrapper.class.getSimpleName();
@@ -52,7 +53,6 @@ public class MainActivity extends AppCompatActivity {
         class TangoUpdateCallback extends Tango.TangoUpdateCallback {
             @Override
             public void onPoseAvailable(TangoPoseData pose) {
-                // Log.d(TAG, "POSE" + pose.toString());
                 mTangoDataManager.updatePoseData(pose);
             }
 
@@ -162,139 +162,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    class DataProcessor {
-        private TangoDataManager mManager;
-        private TangoDataRecorder mRecorder;
-
-        private TangoPoseData mColorCameraTPointCloud;
-        private ByteBuffer mDepthImageTmpBuffer;
-        private ByteBuffer mColorImageTmpBuffer;
-
-        private Thread mMainThread;
-        private Boolean mRunning = false;
-        private Boolean mIsRecording = false;
-
-        class MainProcess implements Runnable {
-            private TangoDepthInterpolation.DepthBuffer generateDepthImage(TangoPointCloudData pointCloud, int width, int height) {
-                if (mColorCameraTPointCloud == null || mColorCameraTPointCloud.statusCode != TangoPoseData.POSE_VALID) {
-                    mColorCameraTPointCloud = TangoSupport.calculateRelativePose(
-                            pointCloud.timestamp, TangoPoseData.COORDINATE_FRAME_CAMERA_COLOR,
-                            pointCloud.timestamp, TangoPoseData.COORDINATE_FRAME_CAMERA_DEPTH
-                    );
-                }
-                return TangoDepthInterpolation.upsampleImageNearestNeighbor(
-                        pointCloud, width, height, mColorCameraTPointCloud);
-            }
-
-            private void fillDepthImageBuffer(TangoDepthInterpolation.DepthBuffer depthBuffer, int width, int height) {
-                int capacity = 4 * width * height;
-                if (mDepthImageTmpBuffer == null || mDepthImageTmpBuffer.capacity() < capacity) {
-                    Log.d(TAG, "Allocating " + capacity + " bytes");
-                    mDepthImageTmpBuffer = ByteBuffer.allocateDirect(capacity);
-                }
-                Utility.convertDepthBufferToByteBuffer(depthBuffer, mDepthImageTmpBuffer);
-            }
-
-            private void fillColorImageBuffer(TangoImageBuffer imageBuffer, int width, int height) {
-                int capacity = 4 * width * height;
-                if (mColorImageTmpBuffer == null || mColorImageTmpBuffer.capacity() < capacity) {
-                    Log.d(TAG, "Allocating " + capacity + " bytes");
-                    mColorImageTmpBuffer = ByteBuffer.allocateDirect(capacity);
-                }
-                Utility.convertTangoImageBufferToByteBuffer(imageBuffer, mColorImageTmpBuffer);
-            }
-
-            private void runOnce() {
-                TangoPointCloudData pointCloud = mManager.getLatestPointCloud();
-
-                if (pointCloud == null) {
-                    return;
-                }
-
-                TangoPoseData poseData = mManager.getPoseData(pointCloud.timestamp);
-                Log.d(TAG, poseData.toString());
-
-                TangoImageBuffer colorImageBuffer = mManager.getColorImage(pointCloud.timestamp);
-
-                if (colorImageBuffer == null) {
-                    return;
-                }
-
-                if (pointCloud.numPoints > 0 && colorImageBuffer.width > 0 && colorImageBuffer.height > 0) {
-                    TangoDepthInterpolation.DepthBuffer depthImageBuffer = generateDepthImage(
-                            pointCloud, colorImageBuffer.width, colorImageBuffer.height);
-
-                    fillDepthImageBuffer(
-                            depthImageBuffer, colorImageBuffer.width, colorImageBuffer.height);
-                    fillColorImageBuffer(
-                            colorImageBuffer, colorImageBuffer.width, colorImageBuffer.height);
-
-
-                    if (mIsRecording) {
-                        Log.d(TAG, "Recording...");
-                        mRecorder.saveDepthImage();
-                        mRecorder.saveColorImage();
-                        mRecorder.savePoseData();
-                    }
-
-                    final Bitmap depthBitmap = Utility.createBitmapFromByteBuffer(
-                            mDepthImageTmpBuffer, colorImageBuffer.width, colorImageBuffer.height);
-                    final Bitmap colorBitmap = Utility.createBitmapFromByteBuffer(
-                            mColorImageTmpBuffer, colorImageBuffer.width, colorImageBuffer.height);
-
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            updatePreview(colorBitmap, depthBitmap);
-                        }
-                    });
-                }
-            }
-
-            @Override
-            public void run() {
-                while(mRunning) {
-                    runOnce();
-                }
-            }
-        }
-
-        public DataProcessor(TangoDataManager processor, TangoDataRecorder recorder) {
-            mManager = processor;
-            mRunning = false;
-            mIsRecording = false;
-            mRecorder = recorder;
-        }
-
-        public void start() {
-            mRunning = true;
-            mMainThread = new Thread(new MainProcess());
-            mMainThread.start();
-        }
-
-        public void stop() {
-            Log.d(TAG, "Stopping main process.");
-            mRunning = false;
-            try {
-                mMainThread.join();
-                Log.d(TAG, "Stopped main process.");
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-
-        public void toggleRecordingState() {
-            mIsRecording = !mIsRecording;
-
-            if (mIsRecording) {
-                mRecorder.initFileStreams();
-            } else {
-                mRecorder.closeFileStreams();
-            }
-        }
-
-    }
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -309,7 +176,7 @@ public class MainActivity extends AppCompatActivity {
 
         TangoDataManager manager = new TangoDataManager();
         mTangoWrapper = new TangoWrapper(MainActivity.this, manager);
-        mDataProcessor = new DataProcessor(manager, new TangoDataRecorder(this));
+        mDataProcessor = new TangoDataProcessor(manager);
         mDataProcessor.start();
 
         mRecordButton.setOnClickListener(new View.OnClickListener() {
@@ -317,14 +184,35 @@ public class MainActivity extends AppCompatActivity {
                 mDataProcessor.toggleRecordingState();
             }
         });
+
+        mIsRunning = true;
+        mMainThread = new Thread(new PreviewUpdater());
+        mMainThread.start();
     }
 
-    private void updatePreview(Bitmap colorBitmap, Bitmap depthBitmap) {
-        Drawable[] layers = new Drawable[2];
-        layers[0] = new BitmapDrawable(getResources(), colorBitmap);
-        layers[1] = new BitmapDrawable(getResources(), depthBitmap);
-        mImageView.setImageDrawable(new LayerDrawable(layers));
+    class PreviewUpdater implements Runnable {
+        @Override
+        public void run() {
+            while(mIsRunning) {
+                updatePreview();
+            }
+        }
+    }
 
+    private void updatePreview() {
+        Bitmap[] bitmaps = mDataProcessor.getBitmaps();
+        if (bitmaps == null) {
+            return;
+        }
+        final Drawable[] layers = new Drawable[2];
+        layers[0] = new BitmapDrawable(getResources(), bitmaps[0]);
+        layers[1] = new BitmapDrawable(getResources(), bitmaps[1]);
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                mImageView.setImageDrawable(new LayerDrawable(layers));
+            }
+        });
         Display display = ((WindowManager) getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
         switch(display.getRotation()) {
             case 0: // Portrait
@@ -345,12 +233,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
+        mIsRunning = false;
         synchronized (MainActivity.this) {
             try {
+                mMainThread.join();
                 mDataProcessor.stop();
                 mTangoWrapper.stop();
             } catch (TangoErrorException e) {
                 Log.e(TAG, getString(R.string.exception_tango_error), e);
+            }catch (InterruptedException e) {
+                e.printStackTrace();
             }
         }
 
