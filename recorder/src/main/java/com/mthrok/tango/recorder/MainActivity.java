@@ -33,8 +33,7 @@ import java.util.ArrayList;
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = MainActivity.class.getSimpleName();
 
-    private TangoWrapper mTangoWrapper;
-    private TangoDataProcessor mDataProcessor;
+    private TangoInterface mTangoInterface;
 
     private ImageView mImageView;
     private Button mRecordButton;
@@ -42,11 +41,12 @@ public class MainActivity extends AppCompatActivity {
     private Thread mMainThread;
     private Boolean mIsRunning;
 
-    private class TangoWrapper {
-        private final String TAG = TangoWrapper.class.getSimpleName();
+    private class TangoInterface {
+        private final String TAG = TangoInterface.class.getSimpleName();
 
         private final Tango mTango;
         private final TangoDataManager mTangoDataManager;
+        private final TangoDataProcessor mTangoDataProcessor;
 
         private Boolean mIsStarted;
 
@@ -86,7 +86,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         class OnTangoInitializedCallback implements Runnable {
-            private final String TAG = TangoWrapper.OnTangoInitializedCallback.class.getSimpleName();
+            private final String TAG = TangoInterface.OnTangoInitializedCallback.class.getSimpleName();
             private final Context mContext;
 
             private OnTangoInitializedCallback(Context context) {
@@ -100,6 +100,7 @@ public class MainActivity extends AppCompatActivity {
                         setupTango();
                         startTango();
                         initTangoSupport();
+                        mTangoDataProcessor.start();
                     } catch (TangoOutOfDateException e) {
                         Log.e(TAG, mContext.getString(R.string.exception_out_of_date), e);
                     } catch (TangoErrorException e) {
@@ -151,14 +152,26 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        private TangoWrapper(Context context, TangoDataManager tangoDataProcessor) {
+        private TangoInterface(Context context) {
             mTango = new Tango(context, new OnTangoInitializedCallback(context));
-            mTangoDataManager = tangoDataProcessor;
+            mTangoDataManager = new TangoDataManager();
+            mTangoDataProcessor = new TangoDataProcessor(mTangoDataManager);
         }
 
         private void stop() {
+            mTangoDataProcessor.stop();
             mTango.disconnect();
             mIsStarted = false;
+        }
+
+        // TODO: Think better approach
+        public void toggleRecordingState() {
+            mTangoDataProcessor.toggleRecordingState();
+        }
+
+        // TODO: Think better approach
+        public Bitmap[] getBitmaps() {
+            return mTangoDataProcessor.getBitmaps();
         }
     }
 
@@ -174,14 +187,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
 
-        TangoDataManager manager = new TangoDataManager();
-        mTangoWrapper = new TangoWrapper(MainActivity.this, manager);
-        mDataProcessor = new TangoDataProcessor(manager);
-        mDataProcessor.start();
+        mTangoInterface = new TangoInterface(MainActivity.this);
 
         mRecordButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                mDataProcessor.toggleRecordingState();
+                mTangoInterface.toggleRecordingState();
             }
         });
 
@@ -200,7 +210,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updatePreview() {
-        Bitmap[] bitmaps = mDataProcessor.getBitmaps();
+        Bitmap[] bitmaps = mTangoInterface.getBitmaps();
         if (bitmaps == null) {
             return;
         }
@@ -237,8 +247,7 @@ public class MainActivity extends AppCompatActivity {
         synchronized (MainActivity.this) {
             try {
                 mMainThread.join();
-                mDataProcessor.stop();
-                mTangoWrapper.stop();
+                mTangoInterface.stop();
             } catch (TangoErrorException e) {
                 Log.e(TAG, getString(R.string.exception_tango_error), e);
             }catch (InterruptedException e) {
