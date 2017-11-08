@@ -27,6 +27,7 @@ import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.experimental.TangoImageBuffer;
 import com.google.tango.support.TangoSupport;
+import com.projecttango.tangosupport.ux.TangoUx;
 
 import java.util.ArrayList;
 
@@ -38,13 +39,14 @@ public class MainActivity extends AppCompatActivity {
     private ImageView mImageView;
     private Button mRecordButton;
 
-    private Thread mMainThread;
-    private Boolean mIsRunning;
+    private Thread mPreviewUpdaterThread;
+    private Boolean mIsPreviewUpdaterThreadRunning;
 
     private class TangoInterface {
         private final String TAG = TangoInterface.class.getSimpleName();
 
         private final Tango mTango;
+        private final TangoUx mTangoUx;
         private final TangoDataManager mTangoDataManager;
         private final TangoDataProcessor mTangoDataProcessor;
 
@@ -95,8 +97,9 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void run() {
-                synchronized (MainActivity.this) {
+                synchronized (MainActivity.TangoInterface.this) {
                     try {
+                        mTangoUx.start();
                         setupTango();
                         startTango();
                         initTangoSupport();
@@ -153,15 +156,19 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private TangoInterface(Context context) {
+            mTangoUx = new TangoUx(context);
             mTango = new Tango(context, new OnTangoInitializedCallback(context));
             mTangoDataManager = new TangoDataManager();
             mTangoDataProcessor = new TangoDataProcessor(mTangoDataManager);
         }
 
         private void stop() {
-            mTangoDataProcessor.stop();
-            mTango.disconnect();
-            mIsStarted = false;
+            synchronized (MainActivity.TangoInterface.this) {
+                mIsStarted = false;
+                mTangoDataProcessor.stop();
+                mTango.disconnect();
+                mTangoUx.stop();
+            }
         }
 
         // TODO: Think better approach
@@ -172,6 +179,47 @@ public class MainActivity extends AppCompatActivity {
         // TODO: Think better approach
         public Bitmap[] getBitmaps() {
             return mTangoDataProcessor.getBitmaps();
+        }
+    }
+
+    class PreviewUpdater implements Runnable {
+        @Override
+        public void run() {
+            mIsPreviewUpdaterThreadRunning = true;
+            while(mIsPreviewUpdaterThreadRunning) {
+                updatePreview();
+            }
+        }
+
+        private void updatePreview() {
+            Bitmap[] bitmaps = mTangoInterface.getBitmaps();
+            if (bitmaps == null) {
+                return;
+            }
+            final Drawable[] layers = new Drawable[2];
+            layers[0] = new BitmapDrawable(getResources(), bitmaps[0]);
+            layers[1] = new BitmapDrawable(getResources(), bitmaps[1]);
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    mImageView.setImageDrawable(new LayerDrawable(layers));
+                }
+            });
+            Display display = ((WindowManager) getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
+            switch(display.getRotation()) {
+                case 0: // Portrait
+                    mImageView.setRotation(90);
+                    break;
+                case 1: // Landscape
+                    mImageView.setRotation(0);
+                    break;
+                case 2: // Upside down
+                    mImageView.setRotation(0);
+                    break;
+                case 3: // Landscape right
+                    mImageView.setRotation(180);
+                    break;
+            }
         }
     }
 
@@ -195,65 +243,30 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        mIsRunning = true;
-        mMainThread = new Thread(new PreviewUpdater());
-        mMainThread.start();
-    }
-
-    class PreviewUpdater implements Runnable {
-        @Override
-        public void run() {
-            while(mIsRunning) {
-                updatePreview();
-            }
-        }
-    }
-
-    private void updatePreview() {
-        Bitmap[] bitmaps = mTangoInterface.getBitmaps();
-        if (bitmaps == null) {
-            return;
-        }
-        final Drawable[] layers = new Drawable[2];
-        layers[0] = new BitmapDrawable(getResources(), bitmaps[0]);
-        layers[1] = new BitmapDrawable(getResources(), bitmaps[1]);
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                mImageView.setImageDrawable(new LayerDrawable(layers));
-            }
-        });
-        Display display = ((WindowManager) getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
-        switch(display.getRotation()) {
-            case 0: // Portrait
-                mImageView.setRotation(90);
-                break;
-            case 1: // Landscape
-                mImageView.setRotation(0);
-                break;
-            case 2: // Upside down
-                mImageView.setRotation(0);
-                break;
-            case 3: // Landscape right
-                mImageView.setRotation(180);
-                break;
-        }
+        mPreviewUpdaterThread = new Thread(new PreviewUpdater());
+        mPreviewUpdaterThread.start();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        mIsRunning = false;
-        synchronized (MainActivity.this) {
-            try {
-                mMainThread.join();
-                mTangoInterface.stop();
-            } catch (TangoErrorException e) {
-                Log.e(TAG, getString(R.string.exception_tango_error), e);
-            }catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+        mIsPreviewUpdaterThreadRunning = false;
+        try {
+            mPreviewUpdaterThread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
+        mTangoInterface.stop();
+    }
 
+    private void showToastAndFinishOnUiThread(final int resId) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(
+                        MainActivity.this, getString(resId), Toast.LENGTH_LONG).show();
+                finish();
+            }
+        });
     }
 }
