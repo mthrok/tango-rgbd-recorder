@@ -28,8 +28,14 @@ import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.experimental.TangoImageBuffer;
 import com.google.tango.support.TangoSupport;
 import com.projecttango.tangosupport.ux.TangoUx;
+import com.projecttango.tangosupport.ux.UxExceptionEventListener;
+import com.projecttango.tangosupport.ux.UxExceptionEvent;
 
 import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledExecutorService;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = MainActivity.class.getSimpleName();
@@ -39,8 +45,7 @@ public class MainActivity extends AppCompatActivity {
     private ImageView mImageView;
     private Button mRecordButton;
 
-    private Thread mPreviewUpdaterThread;
-    private Boolean mIsPreviewUpdaterThreadRunning;
+    private PreviewUpdater mPreviewUpdater;
 
     private class TangoInterface {
         private final String TAG = TangoInterface.class.getSimpleName();
@@ -75,7 +80,8 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onTangoEvent(TangoEvent event) {
-                Log.d(TAG, "TANGO EVENT." + event.toString());
+                mTangoUx.equals(event);
+                Log.d(TAG, "TANGO EVENT: " + event.toString());
             }
         }
 
@@ -155,8 +161,38 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        class TangoUxExceptionEventListener implements UxExceptionEventListener {
+            @Override
+            public void onUxExceptionEvent(UxExceptionEvent event) {
+                String status = (event.getStatus() == UxExceptionEvent.STATUS_DETECTED) ? "[DETECTED]" : "[RESOLVED]";
+                int eventType = event.getType();
+                if (eventType == UxExceptionEvent.TYPE_LYING_ON_SURFACE) {
+                    Log.i(TAG, status + " Device lying on surface");
+                }
+                if (eventType == UxExceptionEvent.TYPE_FEW_DEPTH_POINTS) {
+                    Log.i(TAG, status + " Too few depth points");
+                }
+                if (eventType == UxExceptionEvent.TYPE_FEW_FEATURES) {
+                    Log.i(TAG, status + " Too few features");
+                }
+                if (eventType == UxExceptionEvent.TYPE_MOTION_TRACK_INVALID) {
+                    Log.i(TAG, status + " Invalid poses in MotionTracking");
+                }
+                if (eventType == UxExceptionEvent.TYPE_MOVING_TOO_FAST) {
+                    Log.i(TAG, status + " Moving too fast");
+                }
+                if (eventType == UxExceptionEvent.TYPE_FISHEYE_CAMERA_OVER_EXPOSED) {
+                    Log.i(TAG, status + " Fisheye Camera Over Exposed");
+                }
+                if (eventType == UxExceptionEvent.TYPE_FISHEYE_CAMERA_UNDER_EXPOSED) {
+                    Log.i(TAG, status + " Fisheye Camera Under Exposed");
+                }
+            }
+        }
+        
         private TangoInterface(Context context) {
             mTangoUx = new TangoUx(context);
+            mTangoUx.setUxExceptionEventListener(new TangoUxExceptionEventListener());
             mTango = new Tango(context, new OnTangoInitializedCallback(context));
             mTangoDataManager = new TangoDataManager();
             mTangoDataProcessor = new TangoDataProcessor(mTangoDataManager);
@@ -180,46 +216,54 @@ public class MainActivity extends AppCompatActivity {
         public Bitmap[] getBitmaps() {
             return mTangoDataProcessor.getBitmaps();
         }
+
     }
 
-    class PreviewUpdater implements Runnable {
-        @Override
-        public void run() {
-            mIsPreviewUpdaterThreadRunning = true;
-            while(mIsPreviewUpdaterThreadRunning) {
-                updatePreview();
+    class PreviewUpdater {
+        private final ScheduledExecutorService mScheduler =
+                Executors.newScheduledThreadPool(1);
+        private ScheduledFuture<?> mJobHandle;
+        class PreviewUpdateJob implements Runnable {
+            @Override
+            public void run() {
+                Bitmap[] bitmaps = mTangoInterface.getBitmaps();
+                if (bitmaps == null) {
+                    return;
+                }
+                final Drawable[] layers = new Drawable[2];
+                layers[0] = new BitmapDrawable(getResources(), bitmaps[0]);
+                layers[1] = new BitmapDrawable(getResources(), bitmaps[1]);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        mImageView.setImageDrawable(new LayerDrawable(layers));
+                    }
+                });
+                Display display = ((WindowManager) getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
+                switch (display.getRotation()) {
+                    case 0: // Portrait
+                        mImageView.setRotation(90);
+                        break;
+                    case 1: // Landscape
+                        mImageView.setRotation(0);
+                        break;
+                    case 2: // Upside down
+                        mImageView.setRotation(0);
+                        break;
+                    case 3: // Landscape right
+                        mImageView.setRotation(180);
+                        break;
+                }
             }
         }
 
-        private void updatePreview() {
-            Bitmap[] bitmaps = mTangoInterface.getBitmaps();
-            if (bitmaps == null) {
-                return;
-            }
-            final Drawable[] layers = new Drawable[2];
-            layers[0] = new BitmapDrawable(getResources(), bitmaps[0]);
-            layers[1] = new BitmapDrawable(getResources(), bitmaps[1]);
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    mImageView.setImageDrawable(new LayerDrawable(layers));
-                }
-            });
-            Display display = ((WindowManager) getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
-            switch(display.getRotation()) {
-                case 0: // Portrait
-                    mImageView.setRotation(90);
-                    break;
-                case 1: // Landscape
-                    mImageView.setRotation(0);
-                    break;
-                case 2: // Upside down
-                    mImageView.setRotation(0);
-                    break;
-                case 3: // Landscape right
-                    mImageView.setRotation(180);
-                    break;
-            }
+        public void start() {
+            mJobHandle =
+                    mScheduler.scheduleAtFixedRate(new PreviewUpdateJob(), 0, 100, TimeUnit.MILLISECONDS);
+        }
+
+        public void stop() {
+            mJobHandle.cancel(false);
         }
     }
 
@@ -243,19 +287,14 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        mPreviewUpdaterThread = new Thread(new PreviewUpdater());
-        mPreviewUpdaterThread.start();
+        mPreviewUpdater = new PreviewUpdater();
+        mPreviewUpdater.start();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        mIsPreviewUpdaterThreadRunning = false;
-        try {
-            mPreviewUpdaterThread.join();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+        mPreviewUpdater.stop();
         mTangoInterface.stop();
     }
 
