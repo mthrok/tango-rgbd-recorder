@@ -25,7 +25,7 @@ public class TangoPoseDataManager {
         this(DEFAULT_BUFFER_SIZE);
     }
 
-    public TangoPoseData getLatestImageBuffer() {
+    public TangoPoseData getLatestPoseData() {
         return getPoseData(Double.MAX_VALUE);
     }
 

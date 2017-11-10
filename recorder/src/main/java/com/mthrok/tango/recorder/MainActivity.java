@@ -259,7 +259,8 @@ public class MainActivity extends AppCompatActivity {
 
         public void start() {
             mJobHandle =
-                    mScheduler.scheduleAtFixedRate(new PreviewUpdateJob(), 0, 100, TimeUnit.MILLISECONDS);
+                    mScheduler.scheduleAtFixedRate(
+                            new PreviewUpdateJob(), 0, 100, TimeUnit.MILLISECONDS);
         }
 
         public void stop() {
@@ -296,16 +297,5 @@ public class MainActivity extends AppCompatActivity {
         super.onStop();
         mPreviewUpdater.stop();
         mTangoInterface.stop();
-    }
-
-    private void showToastAndFinishOnUiThread(final int resId) {
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                Toast.makeText(
-                        MainActivity.this, getString(resId), Toast.LENGTH_LONG).show();
-                finish();
-            }
-        });
     }
 }

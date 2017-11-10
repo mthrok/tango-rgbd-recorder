@@ -30,6 +30,9 @@ class TangoDataProcessor {
 
     private TangoPoseData mColorCameraTPointCloud = new TangoPoseData();
     private ReentrantLock mImageBufferLock = new ReentrantLock();
+    private TangoPoseData mPose;
+    private TangoPointCloudData mPointCloud;
+    private DepthBuffer mDepthBuffer;
     private ByteBuffer mDepthImageBuffer;
     private ByteBuffer mColorImageBuffer;
     private int mImageWidth = 0;
@@ -41,62 +44,69 @@ class TangoDataProcessor {
     class MainProcess implements Runnable {
         @Override
         public void run() {
+            mIsRunning = true;
             while(mIsRunning) {
                 runOnce();
             }
         }
 
         private void runOnce() {
-            generateRGBDImages();
+            boolean isBufferUpdated = generateRGBDImages();
 
-            if (mIsBufferReady && mIsRecording) {
-                Log.d(TAG, "Recording...");
-                mRecorder.saveDepthImage();
-                mRecorder.saveColorImage();
-                mRecorder.savePoseData();
+            if (isBufferUpdated && mIsRecording && mRecorder.isOutputStreamReady()) {
+                mImageBufferLock.lock();
+                try {
+                    mRecorder.saveDepthImage(mDepthBuffer);
+                    mRecorder.saveColorImage(mColorImageBuffer);
+                    mRecorder.savePoseData(mPose);
+                } finally {
+                    mImageBufferLock.unlock();
+                }
             }
         }
 
-        private void generateRGBDImages() {
-            TangoPointCloudData pointCloud = mManager.getLatestPointCloud();
-            if (pointCloud == null) {
-                return;
+        private boolean generateRGBDImages() {
+            mPointCloud = mManager.getLatestPointCloud();
+            if (mPointCloud == null) {
+                return false;
             }
 
+            mPose = mManager.getPoseData(mPointCloud.timestamp);
+
             if (mColorCameraTPointCloud.statusCode != TangoPoseData.POSE_VALID) {
-                boolean success = initializeRelativePose(pointCloud.timestamp);
+                boolean success = initializeRelativePose(mPointCloud.timestamp);
                 if (!success) {
-                    return;
+                    return false;
                 }
             }
 
-            TangoImageBuffer colorImageBuffer = mManager.getColorImage(pointCloud.timestamp);
+            TangoImageBuffer colorImageBuffer = mManager.getColorImage(mPointCloud.timestamp);
             if (colorImageBuffer == null) {
-                return;
+                return false;
             }
 
             if (colorImageBuffer.width == 0 || colorImageBuffer.height == 0) {
-                return;
+                return false;
             }
 
             mImageWidth = colorImageBuffer.width;
             mImageHeight = colorImageBuffer.height;
 
-            if (pointCloud.numPoints == 0) {
-                return;
+            if (mPointCloud.numPoints == 0) {
+                return false;
             }
 
-            DepthBuffer depthImageBuffer = TangoDepthInterpolation.upsampleImageNearestNeighbor(
-                    pointCloud, mImageWidth, mImageHeight, mColorCameraTPointCloud);
+            mDepthBuffer = TangoDepthInterpolation.upsampleImageNearestNeighbor(
+                    mPointCloud, mImageWidth, mImageHeight, mColorCameraTPointCloud);
 
             mImageBufferLock.lock();
             try {
-                fillImageBuffers(colorImageBuffer, depthImageBuffer);
+                fillImageBuffers(colorImageBuffer, mDepthBuffer);
             } finally {
                 mImageBufferLock.unlock();
             }
-
             mIsBufferReady = true;
+            return true;
         }
 
         private Boolean initializeRelativePose(double timestamp) {
@@ -141,21 +151,29 @@ class TangoDataProcessor {
         mRecorder =  new TangoDataRecorder();
     }
 
-    public void start() {
-        mIsRunning = true;
+    private void startMainProcess() {
         mMainThread = new Thread(new MainProcess());
         mMainThread.start();
     }
 
-    public void stop() {
+    private void stopMainProcess() {
         Log.d(TAG, "Stopping main process.");
         mIsRunning = false;
         try {
             mMainThread.join();
-            Log.d(TAG, "Stopped main process.");
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
+        Log.d(TAG, "Stopped main process.");
+    }
+
+    public void start() {
+        startMainProcess();
+    }
+
+    public void stop() {
+        stopMainProcess();
+        mRecorder.closeFileStreams();
     }
 
     public void toggleRecordingState() {

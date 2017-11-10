@@ -18,12 +18,12 @@ public class Utility {
 
     private static final int[] DEPTH_COLORS = createColorPalette();
     private static final int DEPTH_COLOR_TOO_FAR = Color.WHITE;
-    private static final int DEPTH_COLOR_TOO_CLOSE = Color.HSVToColor(new float[]{300, 1, 1}); // Purple
+    private static final int DEPTH_COLOR_TOO_CLOSE = Color.HSVToColor(new float[]{0 , 1, 1}); // red
 
     private static int[] createColorPalette() {
         int palette_size = 360;
-        float hue_begin = 0;
-        float hue_end = 240;
+        float hue_begin = 240; // blue
+        float hue_end = 60; // green
 
         int[] palette = new int[palette_size];
         float[] hsv = new float[3];
