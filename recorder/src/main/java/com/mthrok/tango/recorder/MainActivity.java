@@ -3,7 +3,6 @@ package com.mthrok.tango.recorder;
 import android.content.Context;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.view.Display;
 import android.view.WindowManager;
@@ -54,10 +53,7 @@ public class MainActivity extends AppCompatActivity {
                 });
             }
 
-            @Override
-            public void run() {
-                checkError();
-
+            private void updatePreview() {
                 Bitmap[] bitmaps = mTangoInterface.getBitmaps();
                 if (bitmaps == null) {
                     return;
@@ -87,12 +83,20 @@ public class MainActivity extends AppCompatActivity {
                         break;
                 }
             }
+
+            @Override
+            public void run() {
+                checkError();
+
+                if (mTangoInterface.isRunning()) {
+                    updatePreview();
+                }
+            }
         }
 
         public void start() {
-            mJobHandle =
-                    mScheduler.scheduleAtFixedRate(
-                            new PreviewUpdateJob(), 0, 100, TimeUnit.MILLISECONDS);
+            mJobHandle = mScheduler.scheduleAtFixedRate(
+                    new PreviewUpdateJob(), 0, 100, TimeUnit.MILLISECONDS);
         }
 
         public void stop() {

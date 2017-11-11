@@ -3,7 +3,6 @@ package com.mthrok.tango.recorder;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.util.Log;
-import android.widget.Toast;
 
 import com.google.atap.tangoservice.Tango;
 import com.google.atap.tangoservice.TangoCameraIntrinsics;
@@ -17,9 +16,6 @@ import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.experimental.TangoImageBuffer;
 import com.google.tango.support.TangoSupport;
-import com.projecttango.tangosupport.ux.TangoUx;
-import com.projecttango.tangosupport.ux.UxExceptionEvent;
-import com.projecttango.tangosupport.ux.UxExceptionEventListener;
 
 import java.util.ArrayList;
 
@@ -31,12 +27,11 @@ public class TangoInterface {
     private final String TAG = TangoInterface.class.getSimpleName();
 
     private final Tango mTango;
-    private final TangoUx mTangoUx;
     private final TangoDataManager mTangoDataManager;
     private final TangoDataProcessor mTangoDataProcessor;
     private Integer mErrorStringId = null;
 
-    private Boolean mIsStarted;
+    private Boolean mIsRunning;
 
     class TangoUpdateCallback extends Tango.TangoUpdateCallback {
         @Override
@@ -61,7 +56,6 @@ public class TangoInterface {
 
         @Override
         public void onTangoEvent(TangoEvent event) {
-            mTangoUx.equals(event);
             Log.d(TAG, "TANGO EVENT: " + event.toString());
         }
     }
@@ -86,11 +80,11 @@ public class TangoInterface {
         public void run() {
             synchronized (TangoInterface.this) {
                 try {
-                    mTangoUx.start();
                     setupTango();
                     startTango();
                     initTangoSupport();
                     mTangoDataProcessor.start();
+                    mIsRunning = true;
                 } catch (TangoOutOfDateException e) {
                     Log.e(TAG, mContext.getString(R.string.exception_out_of_date), e);
                     mErrorStringId = R.string.exception_out_of_date;
@@ -124,7 +118,6 @@ public class TangoInterface {
                     framePairs, new TangoInterface.TangoUpdateCallback());
             mTango.experimentalConnectOnFrameListener(
                     TangoCameraIntrinsics.TANGO_CAMERA_COLOR, new TangoInterface.ColorCameraListener());
-            mIsStarted = true;
         }
 
         private void initTangoSupport() {
@@ -132,38 +125,7 @@ public class TangoInterface {
         }
     }
 
-    class TangoUxExceptionEventListener implements UxExceptionEventListener {
-        @Override
-        public void onUxExceptionEvent(UxExceptionEvent event) {
-            String status = (event.getStatus() == UxExceptionEvent.STATUS_DETECTED) ? "[DETECTED]" : "[RESOLVED]";
-            int eventType = event.getType();
-            if (eventType == UxExceptionEvent.TYPE_LYING_ON_SURFACE) {
-                Log.i(TAG, status + " Device lying on surface");
-            }
-            if (eventType == UxExceptionEvent.TYPE_FEW_DEPTH_POINTS) {
-                Log.i(TAG, status + " Too few depth points");
-            }
-            if (eventType == UxExceptionEvent.TYPE_FEW_FEATURES) {
-                Log.i(TAG, status + " Too few features");
-            }
-            if (eventType == UxExceptionEvent.TYPE_MOTION_TRACK_INVALID) {
-                Log.i(TAG, status + " Invalid poses in MotionTracking");
-            }
-            if (eventType == UxExceptionEvent.TYPE_MOVING_TOO_FAST) {
-                Log.i(TAG, status + " Moving too fast");
-            }
-            if (eventType == UxExceptionEvent.TYPE_FISHEYE_CAMERA_OVER_EXPOSED) {
-                Log.i(TAG, status + " Fisheye Camera Over Exposed");
-            }
-            if (eventType == UxExceptionEvent.TYPE_FISHEYE_CAMERA_UNDER_EXPOSED) {
-                Log.i(TAG, status + " Fisheye Camera Under Exposed");
-            }
-        }
-    }
-
     public TangoInterface(Context context) {
-        mTangoUx = new TangoUx(context);
-        mTangoUx.setUxExceptionEventListener(new TangoInterface.TangoUxExceptionEventListener());
         mTango = new Tango(context, new TangoInterface.OnTangoInitializedCallback(context));
         mTangoDataManager = new TangoDataManager();
         mTangoDataProcessor = new TangoDataProcessor(mTangoDataManager);
@@ -171,10 +133,9 @@ public class TangoInterface {
 
     public void stop() {
         synchronized (TangoInterface.this) {
-            mIsStarted = false;
+            mIsRunning = false;
             mTangoDataProcessor.stop();
             mTango.disconnect();
-            mTangoUx.stop();
         }
     }
 
@@ -191,5 +152,8 @@ public class TangoInterface {
     public int checkError() {
         return mErrorStringId;
     }
-}
 
+    public boolean isRunning() {
+        return mIsRunning;
+    }
+}
