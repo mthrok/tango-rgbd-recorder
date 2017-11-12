@@ -2,7 +2,8 @@
     <string name="app_name">TangoRecorder</string>
     <string name="preview_updater_error">"Unexpected error occurred in PreviewUpdater."</string>
     <string name="tango_interface_error">"Unexpected error occurred in TangoInterface."</string>
+    <string name="tango_data_recorder_error">"Unexpected error occurred in TangoDataRecorder."</string>
     <string name="tango_data_processor_error">"Unexpected error occurred in TangoDataProcessor."</string>
-    <string name="record_button_record">"Record"</string>
-    <string name="record_button_stop">"Stop"</string>
+    <string name="record_button_record_start">"Start Recording"</string>
+    <string name="record_button_record_stop">"Stop Recording"</string>
 </resources>

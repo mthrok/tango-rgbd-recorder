@@ -4,7 +4,6 @@ import com.google.atap.tangoservice.TangoInvalidException;
 import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.experimental.TangoImageBuffer;
-import com.google.tango.support.TangoPointCloudManager;
 
 
 public class TangoDataStore {
@@ -32,8 +31,12 @@ public class TangoDataStore {
         mPoseDataManager.updatePoseData(poseData);
     }
 
-    public TangoPointCloudData getLatestPointCloud() {
-        return mPointCloudManager.getLatestPointCloud();
+    public TangoPointCloudData getPointCloud(double timestamp) {
+        return getPointCloudAndBuffer(timestamp).pointCloud;
+    }
+
+    public TangoPointCloudManager.PointCloudAndBuffer getPointCloudAndBuffer(double timestamp) {
+        return mPointCloudManager.getPointCloudAndBuffer(timestamp);
     }
 
     public TangoImageBuffer getColorImage(double timestamp) {

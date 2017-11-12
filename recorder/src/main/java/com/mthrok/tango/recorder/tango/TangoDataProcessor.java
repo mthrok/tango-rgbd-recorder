@@ -23,7 +23,6 @@ public class TangoDataProcessor extends ExceptionQueue {
     private static final String TAG = TangoDataProcessor.class.getSimpleName();
 
     private TangoDataStore mTangoDataStore;
-    private TangoDataRecorder mTangoDataRecorder;
 
     private FixedDelayExecutor mMainProcess;
 
@@ -38,31 +37,16 @@ public class TangoDataProcessor extends ExceptionQueue {
     private int mImageHeight = -1;
 
     private Boolean mIsBufferReady = false;
-    private Boolean mIsRecording = false;
 
     class DataProcessorJob implements Runnable {
         @Override
         public void run() {
             Log.d(TAG, "Running MainProcess");
             boolean isBufferUpdated = generateRGBDImages();
-
-            if (isBufferUpdated && mIsRecording && mTangoDataRecorder.isOutputStreamReady()) {
-                mImageBufferLock.lock();
-                try {
-                    mTangoDataRecorder.savePoseData(mPose);
-                    mTangoDataRecorder.saveColorImage(mColorImageBuffer);
-                    mTangoDataRecorder.saveDepthImage(mDepthBuffer);
-                } catch (Exception e) {
-                    Log.e(TAG, e.getMessage(), e);
-                    storeException(e);
-                }finally {
-                    mImageBufferLock.unlock();
-                }
-            }
         }
 
         private boolean generateRGBDImages() {
-            mPointCloud = mTangoDataStore.getLatestPointCloud();
+            mPointCloud = mTangoDataStore.getPointCloud(Double.MAX_VALUE);
             if (mPointCloud == null || mPointCloud.numPoints == 0) {
                 return false;
             }
@@ -133,31 +117,18 @@ public class TangoDataProcessor extends ExceptionQueue {
                 Log.d(TAG, "Allocating Color Buffer. " + width + " x  " + height + " (" + capacity + " bytes)");
                 mColorImageBuffer = ByteBuffer.allocateDirect(capacity);
             }
-            com.mthrok.tango.recorder.tango.Utility.convertDepthBufferToByteBuffer(depthBuffer, mDepthImageBuffer);
-            com.mthrok.tango.recorder.tango.Utility.convertTangoImageBufferToByteBuffer(colorBuffer, mColorImageBuffer);
+            Utility.convertDepthBufferToByteBuffer(depthBuffer, mDepthImageBuffer);
+            Utility.convertTangoImageBufferToByteBuffer(colorBuffer, mColorImageBuffer);
         }
     }
 
-    public TangoDataProcessor(TangoDataStore Store, String appName) {
+    public TangoDataProcessor(TangoDataStore Store) {
         mTangoDataStore = Store;
-        mIsRecording = false;
-        mTangoDataRecorder =  new TangoDataRecorder(appName);
         mMainProcess = new FixedDelayExecutor(new DataProcessorJob(), 30);
     }
 
     public void stop() {
         mMainProcess.stop();
-        mTangoDataRecorder.stop();
-    }
-
-    public void toggleRecordingState() {
-        mIsRecording = !mIsRecording;
-
-        if (mIsRecording) {
-            mTangoDataRecorder.initFileStreams();
-        } else {
-            mTangoDataRecorder.closeFileStreams();
-        }
     }
 
     public boolean isBufferReady() {

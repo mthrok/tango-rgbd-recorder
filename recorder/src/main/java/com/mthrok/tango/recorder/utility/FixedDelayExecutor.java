@@ -18,4 +18,14 @@ public class FixedDelayExecutor {
     public void stop() {
         mJobHandle.cancel(false);
     }
+
+    public void join() {
+        while (!mJobHandle.isDone()) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 }
