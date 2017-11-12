@@ -1,4 +1,4 @@
-package com.mthrok.tango.recorder;
+package com.mthrok.tango.recorder.tango;
 
 import com.google.atap.tangoservice.TangoInvalidException;
 import com.google.atap.tangoservice.TangoPointCloudData;
@@ -6,19 +6,15 @@ import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.experimental.TangoImageBuffer;
 import com.google.tango.support.TangoPointCloudManager;
 
-/**
- * Created by moto on 10/18/17.
- */
 
-
-public class TangoDataManager {
-    private static final String TAG = TangoDataManager.class.getSimpleName();
+public class TangoDataStore {
+    private static final String TAG = TangoDataStore.class.getSimpleName();
 
     private TangoPointCloudManager mPointCloudManager;
     private TangoImageBufferManager mColorImageBuffer;
     private TangoPoseDataManager mPoseDataManager;
 
-    public TangoDataManager() {
+    public TangoDataStore() {
         mColorImageBuffer = new TangoImageBufferManager();
         mPointCloudManager = new TangoPointCloudManager();
         mPoseDataManager = new TangoPoseDataManager();

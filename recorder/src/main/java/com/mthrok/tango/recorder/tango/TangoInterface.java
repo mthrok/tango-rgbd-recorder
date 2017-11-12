@@ -1,7 +1,8 @@
-package com.mthrok.tango.recorder;
+package com.mthrok.tango.recorder.tango;
+
+import java.util.ArrayList;
 
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.util.Log;
 
 import com.google.atap.tangoservice.Tango;
@@ -16,33 +17,26 @@ import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.experimental.TangoImageBuffer;
 import com.google.tango.support.TangoSupport;
+import com.mthrok.tango.recorder.R;
 
-import java.util.ArrayList;
-
-/**
- * Created by moto on 11/11/17.
- */
 
 public class TangoInterface {
     private final String TAG = TangoInterface.class.getSimpleName();
 
     private final Tango mTango;
-    private final TangoDataManager mTangoDataManager;
-    private final TangoDataProcessor mTangoDataProcessor;
+    private final TangoDataStore mTangoDataStore;
     private Integer mErrorStringId = null;
-
-    private Boolean mIsRunning;
 
     class TangoUpdateCallback extends Tango.TangoUpdateCallback {
         @Override
         public void onPoseAvailable(TangoPoseData pose) {
-            mTangoDataManager.updatePoseData(pose);
+            mTangoDataStore.updatePoseData(pose);
         }
 
         @Override
         public void onPointCloudAvailable(TangoPointCloudData pointCloud) {
             // Log.d(TAG, "POINT CLOUD AVAILABLE.");
-            mTangoDataManager.updatePointCloud(pointCloud);
+            mTangoDataStore.updatePointCloud(pointCloud);
         }
 
         @Override
@@ -64,7 +58,7 @@ public class TangoInterface {
         @Override
         public void onFrameAvailable(TangoImageBuffer buffer, int cameraId) {
             // Log.d(TAG, "COLOR CAMERA FRAME AVAILABLE.");
-            mTangoDataManager.updateColorCameraFrame(buffer);
+            mTangoDataStore.updateColorCameraFrame(buffer);
         }
     }
 
@@ -83,8 +77,6 @@ public class TangoInterface {
                     setupTango();
                     startTango();
                     initTangoSupport();
-                    mTangoDataProcessor.start();
-                    mIsRunning = true;
                 } catch (TangoOutOfDateException e) {
                     Log.e(TAG, mContext.getString(R.string.exception_out_of_date), e);
                     mErrorStringId = R.string.exception_out_of_date;
@@ -109,15 +101,21 @@ public class TangoInterface {
         private void startTango() {
             ArrayList<TangoCoordinateFramePair> framePairs = new ArrayList<>();
             // Required to enable pose data callback
-            framePairs.add(new TangoCoordinateFramePair(
+            framePairs.add(
+                new TangoCoordinateFramePair(
                     TangoPoseData.COORDINATE_FRAME_START_OF_SERVICE,
                     TangoPoseData.COORDINATE_FRAME_DEVICE
-            ));
+                )
+            );
 
             mTango.connectListener(
-                    framePairs, new TangoInterface.TangoUpdateCallback());
+                    framePairs,
+                    new TangoInterface.TangoUpdateCallback()
+            );
             mTango.experimentalConnectOnFrameListener(
-                    TangoCameraIntrinsics.TANGO_CAMERA_COLOR, new TangoInterface.ColorCameraListener());
+                    TangoCameraIntrinsics.TANGO_CAMERA_COLOR,
+                    new TangoInterface.ColorCameraListener()
+            );
         }
 
         private void initTangoSupport() {
@@ -125,35 +123,18 @@ public class TangoInterface {
         }
     }
 
-    public TangoInterface(Context context) {
+    public TangoInterface(Context context, TangoDataStore store) {
         mTango = new Tango(context, new TangoInterface.OnTangoInitializedCallback(context));
-        mTangoDataManager = new TangoDataManager();
-        mTangoDataProcessor = new TangoDataProcessor(mTangoDataManager);
+        mTangoDataStore = store;
     }
 
     public void stop() {
         synchronized (TangoInterface.this) {
-            mIsRunning = false;
-            mTangoDataProcessor.stop();
             mTango.disconnect();
         }
     }
 
-    // TODO: Think better approach
-    public void toggleRecordingState() {
-        mTangoDataProcessor.toggleRecordingState();
-    }
-
-    // TODO: Think better approach
-    public Bitmap[] getBitmaps() {
-        return mTangoDataProcessor.getBitmaps();
-    }
-
-    public int checkError() {
+    public Integer checkError() {
         return mErrorStringId;
-    }
-
-    public boolean isRunning() {
-        return mIsRunning;
     }
 }

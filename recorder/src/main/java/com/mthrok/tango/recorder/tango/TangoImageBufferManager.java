@@ -1,17 +1,12 @@
-package com.mthrok.tango.recorder;
-
-import android.util.Log;
-
-import com.google.atap.tangoservice.TangoInvalidException;
-import com.google.atap.tangoservice.experimental.TangoImageBuffer;
+package com.mthrok.tango.recorder.tango;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.lang.Math;
 
-/**
- * Created by moto on 10/19/17.
- */
+import com.google.atap.tangoservice.TangoInvalidException;
+import com.google.atap.tangoservice.experimental.TangoImageBuffer;
+
 
 public class TangoImageBufferManager {
     private static final String TAG = TangoImageBufferManager.class.getSimpleName();

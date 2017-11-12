@@ -1,12 +1,8 @@
-package com.mthrok.tango.recorder;
+package com.mthrok.tango.recorder.tango;
 
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.TangoInvalidException;
 
-
-/**
- * Created by moto on 10/19/17.
- */
 
 public class TangoPoseDataManager {
     private static final String TAG = TangoImageBufferManager.class.getSimpleName();

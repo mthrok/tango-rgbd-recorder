@@ -1,7 +1,4 @@
-package com.mthrok.tango.recorder;
-
-import android.util.Log;
-import android.os.Environment;
+package com.mthrok.tango.recorder.tango;
 
 import java.io.IOException;
 import java.io.File;
@@ -11,17 +8,17 @@ import java.util.Date;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 
+import android.util.Log;
+import android.os.Environment;
+
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.tango.depthinterpolation.TangoDepthInterpolation.DepthBuffer;
 
-/**
- * Created by moto on 10/23/17.
- */
 
 public class TangoDataRecorder {
     private static final String TAG = TangoDataRecorder.class.getSimpleName();
 
-    static final String APPNAME="TangoRGBD";
+    private static final String APP_NAME = "TangoRecorder";
     private Boolean mIsOutputStreamReady = false;
     String mTimestamp;
 
@@ -44,7 +41,7 @@ public class TangoDataRecorder {
         DateFormat df = new SimpleDateFormat("yyyyMMddHHmmss");
         mTimestamp = df.format(new Date(System.currentTimeMillis()));
 
-        String prefix = APPNAME + "/" + mTimestamp;
+        String prefix = APP_NAME + "/" + mTimestamp;
 
         File baseDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), prefix);
         Log.d(TAG, "Initializing output directory: " + baseDir.getPath());
