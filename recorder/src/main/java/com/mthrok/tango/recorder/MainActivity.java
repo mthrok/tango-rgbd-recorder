@@ -35,6 +35,8 @@ public class MainActivity extends AppCompatActivity {
     class PreviewUpdateJob implements Runnable {
         private final String TAG = PreviewUpdateJob.class.getSimpleName();
 
+        Bitmap[] mImageBitmaps = null;
+
         private void checkError() {
             Integer resId = mTangoInterface.checkError();
             if (resId != null) {
@@ -54,14 +56,10 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void updatePreview() {
-            Bitmap[] bitmaps = mTangoDataProcessor.getBitmaps();
-            if (bitmaps == null) {
-                Log.d(TAG, "Not updating preview as bitmaps are not ready.");
-                return;
-            }
+            mTangoDataProcessor.getBitmaps(mImageBitmaps);
             final Drawable[] layers = new Drawable[2];
-            layers[0] = new BitmapDrawable(getResources(), bitmaps[0]);
-            layers[1] = new BitmapDrawable(getResources(), bitmaps[1]);
+            layers[0] = new BitmapDrawable(getResources(), mImageBitmaps[0]);
+            layers[1] = new BitmapDrawable(getResources(), mImageBitmaps[1]);
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
@@ -85,12 +83,24 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        private void allocateImageBitmap() {
+            int[] size = mTangoDataProcessor.getImageSize();
+            Bitmap[] bitmaps = {
+                Bitmap.createBitmap(size[0], size[1], Bitmap.Config.ARGB_8888),
+                Bitmap.createBitmap(size[0], size[1], Bitmap.Config.ARGB_8888)
+            };
+            mImageBitmaps = bitmaps;
+        }
+
         @Override
         public void run() {
             Log.d(TAG, "Checking TangoError");
             checkError();
             Log.d(TAG, "Running PreviewUpdate");
             if (mTangoDataProcessor.isBufferReady()) {
+                if (mImageBitmaps == null) {
+                    allocateImageBitmap();
+                }
                 updatePreview();
             }
         }

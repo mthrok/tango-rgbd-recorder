@@ -14,7 +14,6 @@ import com.google.atap.tangoservice.experimental.TangoImageBuffer;
 import com.google.tango.depthinterpolation.TangoDepthInterpolation;
 import com.google.tango.depthinterpolation.TangoDepthInterpolation.DepthBuffer;
 import com.google.tango.support.TangoSupport;
-import com.mthrok.tango.recorder.Utility;
 import com.mthrok.tango.recorder.utility.FixedDelayExecutor;
 
 
@@ -154,27 +153,27 @@ public class TangoDataProcessor {
         }
     }
 
-    public Bitmap[] getBitmaps() {
-        if (!mIsBufferReady) {
-            return null;
-        }
+    public boolean isBufferReady() {
+        return mIsBufferReady;
+    }
 
+    // precondition: mIsBufferReady == true
+    public int[] getImageSize() {
+        int [] ret = {mImageWidth, mImageHeight};
+        return ret;
+    }
+
+    // precondition: mIsBufferReady == true
+    public void getBitmaps(Bitmap[] bitmaps) {
         mImageBufferLock.lock();
         try {
             mColorImageBuffer.rewind();
             mDepthImageBuffer.rewind();
-            Bitmap[] ret = {
-                Utility.createBitmapFromByteBuffer(mColorImageBuffer, mImageWidth, mImageHeight),
-                Utility.createBitmapFromByteBuffer(mDepthImageBuffer, mImageWidth, mImageHeight)
-            };
-            return ret;
+            bitmaps[0].copyPixelsFromBuffer(mColorImageBuffer);
+            bitmaps[1].copyPixelsFromBuffer(mDepthImageBuffer);
         } finally {
             mImageBufferLock.unlock();
         }
-    }
-
-    public boolean isBufferReady() {
-        return mIsBufferReady;
     }
 }
 
