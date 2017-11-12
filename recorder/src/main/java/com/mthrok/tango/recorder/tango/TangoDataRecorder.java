@@ -65,6 +65,10 @@ public class TangoDataRecorder {
         }
     }
 
+    public void stop() {
+        closeFileStreams();
+    }
+
     public void closeFileStreams() {
         synchronized (this) {
             mIsOutputStreamReady = false;

@@ -32,8 +32,8 @@ public class TangoDataProcessor {
     private DepthBuffer mDepthBuffer;
     private ByteBuffer mDepthImageBuffer;
     private ByteBuffer mColorImageBuffer;
-    private int mImageWidth = 0;
-    private int mImageHeight = 0;
+    private int mImageWidth = -1;
+    private int mImageHeight = -1;
 
     private Boolean mIsBufferReady = false;
     private Boolean mIsRecording = false;
@@ -130,7 +130,6 @@ public class TangoDataProcessor {
             }
         }
 
-
     public TangoDataProcessor(TangoDataStore Store) {
         mStore = Store;
         mIsRecording = false;
@@ -140,7 +139,7 @@ public class TangoDataProcessor {
 
     public void stop() {
         mMainProcess.stop();
-        mRecorder.closeFileStreams();
+        mRecorder.stop();
     }
 
     public void toggleRecordingState() {
