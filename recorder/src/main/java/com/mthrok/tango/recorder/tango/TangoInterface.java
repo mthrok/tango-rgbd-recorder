@@ -9,23 +9,19 @@ import com.google.atap.tangoservice.Tango;
 import com.google.atap.tangoservice.TangoCameraIntrinsics;
 import com.google.atap.tangoservice.TangoConfig;
 import com.google.atap.tangoservice.TangoCoordinateFramePair;
-import com.google.atap.tangoservice.TangoErrorException;
 import com.google.atap.tangoservice.TangoEvent;
-import com.google.atap.tangoservice.TangoInvalidException;
-import com.google.atap.tangoservice.TangoOutOfDateException;
 import com.google.atap.tangoservice.TangoPointCloudData;
 import com.google.atap.tangoservice.TangoPoseData;
 import com.google.atap.tangoservice.experimental.TangoImageBuffer;
 import com.google.tango.support.TangoSupport;
-import com.mthrok.tango.recorder.R;
 
+import com.mthrok.tango.recorder.utility.ExceptionQueue;
 
-public class TangoInterface {
+public class TangoInterface extends ExceptionQueue {
     private final String TAG = TangoInterface.class.getSimpleName();
 
     private final Tango mTango;
     private final TangoDataStore mTangoDataStore;
-    private Integer mErrorStringId = null;
 
     class TangoUpdateCallback extends Tango.TangoUpdateCallback {
         @Override
@@ -64,11 +60,6 @@ public class TangoInterface {
 
     class OnTangoInitializedCallback implements Runnable {
         private final String TAG = TangoInterface.OnTangoInitializedCallback.class.getSimpleName();
-        private final Context mContext;
-
-        private OnTangoInitializedCallback(Context context) {
-            mContext = context;
-        }
 
         @Override
         public void run() {
@@ -77,15 +68,9 @@ public class TangoInterface {
                     setupTango();
                     startTango();
                     initTangoSupport();
-                } catch (TangoOutOfDateException e) {
-                    Log.e(TAG, mContext.getString(R.string.exception_out_of_date), e);
-                    mErrorStringId = R.string.exception_out_of_date;
-                } catch (TangoErrorException e) {
-                    Log.e(TAG, mContext.getString(R.string.exception_tango_error), e);
-                    mErrorStringId = R.string.exception_tango_error;
-                } catch (TangoInvalidException e) {
-                    Log.e(TAG, mContext.getString(R.string.exception_tango_invalid), e);
-                    mErrorStringId = R.string.exception_tango_invalid;
+                } catch (Exception e) {
+                    Log.e(TAG, e.getMessage(), e);
+                    storeException(e);
                 }
             }
         }
@@ -124,7 +109,7 @@ public class TangoInterface {
     }
 
     public TangoInterface(Context context, TangoDataStore store) {
-        mTango = new Tango(context, new TangoInterface.OnTangoInitializedCallback(context));
+        mTango = new Tango(context, new TangoInterface.OnTangoInitializedCallback());
         mTangoDataStore = store;
     }
 
@@ -132,9 +117,5 @@ public class TangoInterface {
         synchronized (TangoInterface.this) {
             mTango.disconnect();
         }
-    }
-
-    public Integer checkError() {
-        return mErrorStringId;
     }
 }

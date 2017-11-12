@@ -18,30 +18,30 @@ import com.google.tango.depthinterpolation.TangoDepthInterpolation.DepthBuffer;
 public class TangoDataRecorder {
     private static final String TAG = TangoDataRecorder.class.getSimpleName();
 
-    private static final String APP_NAME = "TangoRecorder";
+    private final String mAppName;
     private Boolean mIsOutputStreamReady = false;
-    String mTimestamp;
 
-    FileOutputStream mDepthStream;
-    FileOutputStream mColorStream;
     FileOutputStream mPoseStream;
+    FileOutputStream mColorStream;
+    FileOutputStream mDepthStream;
 
-    public TangoDataRecorder() {
+    public TangoDataRecorder(String appName) {
+        mAppName = appName;
     }
 
     private boolean isExternalStorageWritable() {
         return Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState());
     }
 
-    public void initFileStreams() {
+    public synchronized void initFileStreams() {
         if (!isExternalStorageWritable()) {
             return;
         }
 
         DateFormat df = new SimpleDateFormat("yyyyMMddHHmmss");
-        mTimestamp = df.format(new Date(System.currentTimeMillis()));
+        String timestamp = df.format(new Date(System.currentTimeMillis()));
 
-        String prefix = APP_NAME + "/" + mTimestamp;
+        String prefix = mAppName + "/" + timestamp;
 
         File baseDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), prefix);
         Log.d(TAG, "Initializing output directory: " + baseDir.getPath());
@@ -53,56 +53,40 @@ public class TangoDataRecorder {
         File colorFile = new File(baseDir, "color.bin");
         File depthFile = new File(baseDir, "depth.bin");
         Log.d(TAG, "Initializing FileOutputStreams");
-        synchronized (this) {
-            try {
-                mPoseStream = new FileOutputStream(poseFile, true);
-                mColorStream = new FileOutputStream(colorFile, true);
-                mDepthStream = new FileOutputStream(depthFile, true);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            mIsOutputStreamReady = true;
+        try {
+            mPoseStream = new FileOutputStream(poseFile, true);
+            mColorStream = new FileOutputStream(colorFile, true);
+            mDepthStream = new FileOutputStream(depthFile, true);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
+        mIsOutputStreamReady = true;
     }
 
     public void stop() {
         closeFileStreams();
     }
 
+    private synchronized void closeFileStream(FileOutputStream stream, String message) throws IOException {
+        if (stream != null) {
+            Log.d(TAG, message);
+            stream.close();
+        }
+    }
+
     public void closeFileStreams() {
-        synchronized (this) {
-            mIsOutputStreamReady = false;
-            if (mPoseStream != null) {
-                Log.d(TAG, "Closing Pose FileOutputStream");
-                try {
-                    mPoseStream.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                } finally {
-                    mPoseStream = null;
-                }
-            }
-
-            if (mColorStream != null) {
-                Log.d(TAG, "Closing Color FileOutputStream");
-                try {
-                    mColorStream.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                } finally {
-                    mColorStream = null;
-                }
-            }
-
-            if (mDepthStream != null) {
-                Log.d(TAG, "Closing Depth FileOutputStream");
-                try {
-                    mDepthStream.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                } finally {
-                    mDepthStream = null;
-                }
+        mIsOutputStreamReady = false;
+        FileOutputStream[] streams = {mPoseStream, mColorStream, mDepthStream};
+        String[] messages = {
+                "Closing Pose FileOutputStream",
+                "Closing Color FileOutputStream",
+                "Closing Depth FileOutputStream",
+        };
+        for (int i = 0; i < 3; ++i) {
+            try {
+                closeFileStream(streams[i], messages[i]);
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
     }
@@ -111,36 +95,32 @@ public class TangoDataRecorder {
         return mIsOutputStreamReady;
     }
 
-    private void saveBuffer(ByteBuffer buffer, FileOutputStream stream) {
-        buffer.position(0);
-        try {
-            stream.getChannel().write(buffer);
-        } catch (IOException e) {
-            e.printStackTrace();
+    private synchronized void saveBuffer(ByteBuffer buffer, FileOutputStream stream, String message) {
+        if (mIsOutputStreamReady) {
+            Log.d(TAG, message);
+            buffer.position(0);
+            try {
+                stream.getChannel().write(buffer);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
     public void saveDepthImage(DepthBuffer imageBuffer) {
-        Log.d(TAG, "Saving Depth image");
         ByteBuffer buffer = ByteBuffer.allocate(imageBuffer.depths.capacity() * 4);
         imageBuffer.depths.position(0);
         for(int i = 0; i < imageBuffer.depths.capacity(); ++ i) {
             buffer.putFloat(imageBuffer.depths.get());
         }
-        synchronized (this) {
-            saveBuffer(buffer, mDepthStream);
-        }
+        saveBuffer(buffer, mDepthStream, "Saving Depth image");
     }
 
     public void saveColorImage(ByteBuffer imageBuffer) {
-        Log.d(TAG, "Saving Color image");
-        synchronized (this) {
-            saveBuffer(imageBuffer, mColorStream);
-        }
+        saveBuffer(imageBuffer, mColorStream, "Saving Color image");
     }
 
     public void savePoseData(TangoPoseData pose) {
-        Log.d(TAG, "Saving Pose data");
         // 8 double 4 int 1 float -> 8 * 8 + 4 * 4 + 1 * 4 = 84 byte
         ByteBuffer buffer = ByteBuffer.allocate(84);
         buffer.putDouble(pose.timestamp);
@@ -156,8 +136,6 @@ public class TangoDataRecorder {
         buffer.putInt(pose.confidence);
         buffer.putFloat(pose.accuracy);
 
-        synchronized (this) {
-            saveBuffer(buffer, mPoseStream);
-        }
+        saveBuffer(buffer, mPoseStream, "Saving Pose data");
     }
 }

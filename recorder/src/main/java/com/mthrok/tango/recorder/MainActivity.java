@@ -18,6 +18,7 @@ import android.graphics.drawable.LayerDrawable;
 import com.mthrok.tango.recorder.tango.TangoDataProcessor;
 import com.mthrok.tango.recorder.tango.TangoDataStore;
 import com.mthrok.tango.recorder.tango.TangoInterface;
+import com.mthrok.tango.recorder.utility.ExceptionQueue;
 import com.mthrok.tango.recorder.utility.FixedDelayExecutor;
 
 public class MainActivity extends AppCompatActivity {
@@ -32,24 +33,39 @@ public class MainActivity extends AppCompatActivity {
 
     private FixedDelayExecutor mPreviewUpdater;
 
-    class PreviewUpdateJob implements Runnable {
+    class PreviewUpdateJob extends ExceptionQueue implements Runnable {
         private final String TAG = PreviewUpdateJob.class.getSimpleName();
 
         Bitmap[] mImageBitmaps = null;
 
-        private void checkError() {
-            Integer resId = mTangoInterface.checkError();
-            if (resId != null) {
-                showToastAndFinishOnUiThread(resId);
+        private void checkErrors() {
+            Exception[] exceptions = flushExceptions();
+            if (exceptions.length > 0) {
+                showToastAndExit(
+                    getString(R.string.preview_updater_error)
+                );
             }
 
+            exceptions = mTangoInterface.flushExceptions();
+            if (exceptions.length > 0) {
+                showToastAndExit(
+                    getString(R.string.tango_interface_error)
+                );
+            }
+
+            exceptions = mTangoDataProcessor.flushExceptions();
+            if (exceptions.length > 0) {
+                showToastAndExit(
+                    getString(R.string.tango_data_processor_error)
+                );
+            }
         }
 
-        private void showToastAndFinishOnUiThread(final int resId) {
+        private void showToastAndExit(final String message) {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    Toast.makeText(MainActivity.this, getString(resId), Toast.LENGTH_LONG).show();
+                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
                     finish();
                 }
             });
@@ -94,8 +110,7 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void run() {
-            Log.d(TAG, "Checking TangoError");
-            checkError();
+            checkErrors();
             Log.d(TAG, "Running PreviewUpdate");
             if (mTangoDataProcessor.isBufferReady()) {
                 if (mImageBitmaps == null) {
@@ -119,8 +134,8 @@ public class MainActivity extends AppCompatActivity {
         super.onStart();
 
         mTangoDataStore = new TangoDataStore();
-        mTangoInterface = new TangoInterface(MainActivity.this, mTangoDataStore);
-        mTangoDataProcessor = new TangoDataProcessor(mTangoDataStore);
+        mTangoInterface = new TangoInterface(this, mTangoDataStore);
+        mTangoDataProcessor = new TangoDataProcessor(mTangoDataStore, getString(R.string.app_name));
         mPreviewUpdater = new FixedDelayExecutor(new PreviewUpdateJob(), 500);
 
         mRecordButton.setOnClickListener(new View.OnClickListener() {

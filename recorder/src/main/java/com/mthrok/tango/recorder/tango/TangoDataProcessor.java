@@ -14,14 +14,16 @@ import com.google.atap.tangoservice.experimental.TangoImageBuffer;
 import com.google.tango.depthinterpolation.TangoDepthInterpolation;
 import com.google.tango.depthinterpolation.TangoDepthInterpolation.DepthBuffer;
 import com.google.tango.support.TangoSupport;
+
+import com.mthrok.tango.recorder.utility.ExceptionQueue;
 import com.mthrok.tango.recorder.utility.FixedDelayExecutor;
 
 
-public class TangoDataProcessor {
+public class TangoDataProcessor extends ExceptionQueue {
     private static final String TAG = TangoDataProcessor.class.getSimpleName();
 
-    private TangoDataStore mStore;
-    private TangoDataRecorder mRecorder;
+    private TangoDataStore mTangoDataStore;
+    private TangoDataRecorder mTangoDataRecorder;
 
     private FixedDelayExecutor mMainProcess;
 
@@ -39,116 +41,122 @@ public class TangoDataProcessor {
     private Boolean mIsRecording = false;
 
     class DataProcessorJob implements Runnable {
-            @Override
-            public void run() {
-                Log.d(TAG, "Running MainProcess");
-                boolean isBufferUpdated = generateRGBDImages();
+        @Override
+        public void run() {
+            Log.d(TAG, "Running MainProcess");
+            boolean isBufferUpdated = generateRGBDImages();
 
-                if (isBufferUpdated && mIsRecording && mRecorder.isOutputStreamReady()) {
-                    mImageBufferLock.lock();
-                    try {
-                        mRecorder.saveDepthImage(mDepthBuffer);
-                        mRecorder.saveColorImage(mColorImageBuffer);
-                        mRecorder.savePoseData(mPose);
-                    } finally {
-                        mImageBufferLock.unlock();
-                    }
-                }
-            }
-
-            private boolean generateRGBDImages() {
-                mPointCloud = mStore.getLatestPointCloud();
-                if (mPointCloud == null || mPointCloud.numPoints == 0) {
-                    return false;
-                }
-
-                mPose = mStore.getPoseData(mPointCloud.timestamp);
-                if (mPose == null) {
-                    return false;
-                }
-
-                TangoImageBuffer colorImageBuffer = mStore.getColorImage(mPointCloud.timestamp);
-                if (colorImageBuffer == null || colorImageBuffer.width * colorImageBuffer.height == 0) {
-                    return false;
-                }
-
-                if (mColorCameraTPointCloud.statusCode != TangoPoseData.POSE_VALID) {
-                    boolean success = initializeRelativePose(mPointCloud.timestamp);
-                    if (!success) {
-                        return false;
-                    }
-                }
-
-                mImageWidth = colorImageBuffer.width;
-                mImageHeight = colorImageBuffer.height;
-
-                mDepthBuffer = TangoDepthInterpolation.upsampleImageNearestNeighbor(
-                        mPointCloud, mImageWidth, mImageHeight, mColorCameraTPointCloud);
-
+            if (isBufferUpdated && mIsRecording && mTangoDataRecorder.isOutputStreamReady()) {
                 mImageBufferLock.lock();
                 try {
-                    fillImageBuffers(colorImageBuffer, mDepthBuffer);
-                } finally {
+                    mTangoDataRecorder.savePoseData(mPose);
+                    mTangoDataRecorder.saveColorImage(mColorImageBuffer);
+                    mTangoDataRecorder.saveDepthImage(mDepthBuffer);
+                } catch (Exception e) {
+                    Log.e(TAG, e.getMessage(), e);
+                    storeException(e);
+                }finally {
                     mImageBufferLock.unlock();
                 }
-                mIsBufferReady = true;
-                return true;
-            }
-
-            private Boolean initializeRelativePose(double timestamp) {
-                Boolean success = false;
-                try {
-                    mColorCameraTPointCloud = TangoSupport.calculateRelativePose(
-                            timestamp, TangoPoseData.COORDINATE_FRAME_CAMERA_COLOR,
-                            timestamp, TangoPoseData.COORDINATE_FRAME_CAMERA_DEPTH
-                    );
-                    success = true;
-                } catch (TangoInvalidException e) {
-                    // TangoSupport is not initialized
-                    Log.d(TAG, "Error calculating relative pose.");
-                } catch (TangoErrorException e) {
-                    // Device might not be in a good position
-                    Log.d(TAG, "Failed to calculate relative pose.");
-                }
-                return success;
-            }
-
-            private void fillImageBuffers(TangoImageBuffer colorBuffer, DepthBuffer depthBuffer) {
-                int width = colorBuffer.width;
-                int height = colorBuffer.height;
-                int capacity = 4 * width * height;
-                if (mDepthImageBuffer == null || mDepthImageBuffer.capacity() < capacity) {
-                    Log.d(TAG, "Allocating Depth Buffer. " + width + " x " + height + " (" + capacity + " bytes)");
-                    mDepthImageBuffer = ByteBuffer.allocateDirect(capacity);
-                }
-                if (mColorImageBuffer == null || mColorImageBuffer.capacity() < capacity) {
-                    Log.d(TAG, "Allocating Color Buffer. " + width + " x  " + height + " (" + capacity + " bytes)");
-                    mColorImageBuffer = ByteBuffer.allocateDirect(capacity);
-                }
-                com.mthrok.tango.recorder.tango.Utility.convertDepthBufferToByteBuffer(depthBuffer, mDepthImageBuffer);
-                com.mthrok.tango.recorder.tango.Utility.convertTangoImageBufferToByteBuffer(colorBuffer, mColorImageBuffer);
             }
         }
 
-    public TangoDataProcessor(TangoDataStore Store) {
-        mStore = Store;
+        private boolean generateRGBDImages() {
+            mPointCloud = mTangoDataStore.getLatestPointCloud();
+            if (mPointCloud == null || mPointCloud.numPoints == 0) {
+                return false;
+            }
+
+            mPose = mTangoDataStore.getPoseData(mPointCloud.timestamp);
+            if (mPose == null) {
+                return false;
+            }
+
+            TangoImageBuffer colorImageBuffer = mTangoDataStore.getColorImage(mPointCloud.timestamp);
+            if (colorImageBuffer == null || colorImageBuffer.width * colorImageBuffer.height == 0) {
+                return false;
+            }
+
+            if (mColorCameraTPointCloud.statusCode != TangoPoseData.POSE_VALID) {
+                boolean success = initializeRelativePose(mPointCloud.timestamp);
+                if (!success) {
+                    return false;
+                }
+            }
+
+            mImageWidth = colorImageBuffer.width;
+            mImageHeight = colorImageBuffer.height;
+
+            mDepthBuffer = TangoDepthInterpolation.upsampleImageNearestNeighbor(
+                    mPointCloud, mImageWidth, mImageHeight, mColorCameraTPointCloud);
+
+            mImageBufferLock.lock();
+            try {
+                fillImageBuffers(colorImageBuffer, mDepthBuffer);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to fill image buffer.", e);
+                storeException(e);
+            } finally {
+                mImageBufferLock.unlock();
+            }
+            mIsBufferReady = true;
+            return true;
+        }
+
+        private Boolean initializeRelativePose(double timestamp) {
+            Boolean success = false;
+            try {
+                mColorCameraTPointCloud = TangoSupport.calculateRelativePose(
+                        timestamp, TangoPoseData.COORDINATE_FRAME_CAMERA_COLOR,
+                        timestamp, TangoPoseData.COORDINATE_FRAME_CAMERA_DEPTH
+                );
+                success = true;
+            } catch (TangoInvalidException e) {
+                // TangoSupport is not initialized
+                Log.d(TAG, "Error calculating relative pose.");
+            } catch (TangoErrorException e) {
+                // Device might not be in a good position
+                Log.d(TAG, "Failed to calculate relative pose.");
+            }
+            return success;
+        }
+
+        private void fillImageBuffers(TangoImageBuffer colorBuffer, DepthBuffer depthBuffer) {
+            int width = colorBuffer.width;
+            int height = colorBuffer.height;
+            int capacity = 4 * width * height;
+            if (mDepthImageBuffer == null || mDepthImageBuffer.capacity() < capacity) {
+                Log.d(TAG, "Allocating Depth Buffer. " + width + " x " + height + " (" + capacity + " bytes)");
+                mDepthImageBuffer = ByteBuffer.allocateDirect(capacity);
+            }
+            if (mColorImageBuffer == null || mColorImageBuffer.capacity() < capacity) {
+                Log.d(TAG, "Allocating Color Buffer. " + width + " x  " + height + " (" + capacity + " bytes)");
+                mColorImageBuffer = ByteBuffer.allocateDirect(capacity);
+            }
+            com.mthrok.tango.recorder.tango.Utility.convertDepthBufferToByteBuffer(depthBuffer, mDepthImageBuffer);
+            com.mthrok.tango.recorder.tango.Utility.convertTangoImageBufferToByteBuffer(colorBuffer, mColorImageBuffer);
+        }
+    }
+
+    public TangoDataProcessor(TangoDataStore Store, String appName) {
+        mTangoDataStore = Store;
         mIsRecording = false;
-        mRecorder =  new TangoDataRecorder();
+        mTangoDataRecorder =  new TangoDataRecorder(appName);
         mMainProcess = new FixedDelayExecutor(new DataProcessorJob(), 30);
     }
 
     public void stop() {
         mMainProcess.stop();
-        mRecorder.stop();
+        mTangoDataRecorder.stop();
     }
 
     public void toggleRecordingState() {
         mIsRecording = !mIsRecording;
 
         if (mIsRecording) {
-            mRecorder.initFileStreams();
+            mTangoDataRecorder.initFileStreams();
         } else {
-            mRecorder.closeFileStreams();
+            mTangoDataRecorder.closeFileStreams();
         }
     }
 
@@ -170,6 +178,8 @@ public class TangoDataProcessor {
             mDepthImageBuffer.rewind();
             bitmaps[0].copyPixelsFromBuffer(mColorImageBuffer);
             bitmaps[1].copyPixelsFromBuffer(mDepthImageBuffer);
+        } catch(Exception e) {
+            storeException(e);
         } finally {
             mImageBufferLock.unlock();
         }
